@@ -14,22 +14,16 @@ st.set_page_config(page_title="AS Maven Installation Dashboard", layout="wide")
 # Load Excel
 # ----------------------------
 try:
-    df = pd.read_excel("Installation Data (Responses).xlsx")
+    df = pd.read_excel("Maven-data-installation.xlsx")
 except FileNotFoundError:
-    st.error("❌ Excel file not found! Please make sure it's named 'Installation Data (Responses).xlsx' and is in the same folder.")
+    st.error("❌ Excel file not found! Please make sure it's named 'data-trial.xlsx' and is in the same folder.")
     st.stop()
 
 # ----------------------------
 # Clean column names
 # ----------------------------
 def clean_column(col_name):
-    return (
-        str(col_name)
-        .replace('\n', ' ')
-        .replace('\r', '')
-        .replace('\xa0', ' ')
-        .strip()
-    )
+    return str(col_name).replace('\n', ' ').replace('\r', '').replace('\xa0', ' ').strip()
 
 df.columns = [clean_column(col) for col in df.columns]
 
@@ -37,10 +31,9 @@ df.columns = [clean_column(col) for col in df.columns]
 # Required columns
 # ----------------------------
 required_columns = [
-    'Timestamp', 'MavenCode', 'Partner Store Name', 'Store code', 'Store Name',
+    'Timestamp', 'MavenCode', 'Partner Store Name', 'Store code',
     'State', 'City', 'Have you completed the installation at the store?',
     'Store image - Front (With Date and Time)',
-    'Before work photo (With Date and Time)',
     'After work photo (With Date and Time)',
     'Reporting form (With Date and Time)'
 ]
@@ -96,10 +89,6 @@ if partners:
 # ----------------------------
 # Inline Bar Graph – Installation Status by State
 # ----------------------------
-if 'Reason' not in filtered_df.columns:
-    filtered_df['Reason'] = "Not mentioned"
-
-# Normalize Yes/No responses
 filtered_df['Installation Status'] = (
     filtered_df['Have you completed the installation at the store?']
     .astype(str)
@@ -107,31 +96,24 @@ filtered_df['Installation Status'] = (
     .str.lower()
     .map({'yes': 'Yes', 'no': 'No'})
 )
-
-# Handle missing or unexpected values
 filtered_df['Installation Status'] = filtered_df['Installation Status'].fillna('Unknown')
 
-# Group cleanly for bar chart
 grouped_state = (
     filtered_df.groupby(['State', 'Installation Status'])
     .size()
     .reset_index(name='Count')
 )
-
-# Remove NaN or empty states
 grouped_state = grouped_state[grouped_state['State'].notna() & (grouped_state['State'] != '')]
-
 
 inline_bar = px.bar(
     grouped_state,
     x='State',
     y='Count',
     color='Installation Status',
-    barmode='group',   # or 'stack' if you prefer
+    barmode='group',
     text_auto=True,
-    title="Installation Status by State (Inline View)"
+    title="Installation Status by State"
 )
-
 inline_bar.update_layout(
     xaxis_title="State",
     yaxis_title="Number of Stores",
@@ -139,9 +121,7 @@ inline_bar.update_layout(
     plot_bgcolor="rgba(0,0,0,0)",
     paper_bgcolor="rgba(0,0,0,0)"
 )
-
 st.plotly_chart(inline_bar, use_container_width=True)
-
 
 # ----------------------------
 # Installation Status Pie Chart
@@ -158,7 +138,7 @@ st.plotly_chart(status_fig, use_container_width=True)
 # 📋 Store Data Table Section
 # ----------------------------
 st.header("📊 Store Data Details")
-store_table = filtered_df[['MavenCode', 'Partner Store Name', 'Store code', 'Store Name', 'State', 'City', 'Have you completed the installation at the store?']]
+store_table = filtered_df[['MavenCode', 'Partner Store Name', 'Store code', 'State', 'City', 'Have you completed the installation at the store?']]
 st.dataframe(store_table, use_container_width=True)
 
 # ----------------------------
@@ -167,9 +147,9 @@ st.dataframe(store_table, use_container_width=True)
 st.header("📊 Not Deployed Store Details")
 not_deployed_df = filtered_df[filtered_df['Have you completed the installation at the store?'].astype(str).str.upper() == 'NO']
 if 'Reason' in not_deployed_df.columns:
-    not_deployed_table = not_deployed_df[['MavenCode', 'Store Name', 'State', 'City', 'Reason']]
+    not_deployed_table = not_deployed_df[['MavenCode', 'State', 'City', 'Reason']]
 else:
-    not_deployed_table = not_deployed_df[['MavenCode', 'Store Name', 'State', 'City']]
+    not_deployed_table = not_deployed_df[['MavenCode', 'State', 'City']]
 st.dataframe(not_deployed_table, use_container_width=True)
 st.markdown("---")
 
@@ -177,50 +157,42 @@ st.markdown("---")
 # Helper: Convert Google Drive URLs properly
 # ----------------------------
 def convert_drive_url(url):
-    """Convert a Google Drive share link into a direct-viewable image URL."""
     if pd.isna(url) or not str(url).strip():
         return None
     url = str(url).strip()
     match = re.search(r"[-\w]{25,}", url)
     if match:
-        file_id = match.group(0)
-        return f"https://drive.google.com/uc?export=view&id={file_id}"
+        return f"https://drive.google.com/uc?export=view&id={match.group(0)}"
     elif any(ext in url for ext in [".jpg", ".jpeg", ".png", ".webp", "lh3.googleusercontent.com"]):
         return url
     return None
 
 @st.cache_data(show_spinner=False)
 def fetch_image_base64(url):
-    """Fetch and cache image as base64 for fast rendering."""
     try:
-        response = requests.get(url, timeout=8)
+        response = requests.get(url, timeout=6)
         if response.status_code == 200:
             encoded = base64.b64encode(response.content).decode()
             mime_type = response.headers.get("Content-Type", "image/jpeg")
             return f"data:{mime_type};base64,{encoded}"
     except Exception:
-        pass
+        return None
     return None
 
 # ----------------------------
-# 📸 Store Images Section (With Reporting Form)
+# 📸 Store Images Section (With Partner Store Name)
 # ----------------------------
 st.header("📸 Store Images")
 
 for _, row in filtered_df.iterrows():
-    store_name = str(row.get("Store Name", "")).strip()
-    partner_name = str(row.get("Partner Store Name", "")).strip()
-    city = str(row.get("City", "Unknown City")).strip() or "Unknown City"
+    partner_name = str(row.get("Partner Store Name", "Unknown Partner")).strip() or "Unknown Partner"
+    state = str(row.get("State", "Unknown State")).strip() or "Unknown State"
 
-    if not store_name or store_name.lower() == "nan":
-        store_name = partner_name if partner_name else "Unnamed Store"
-
-    st.markdown(f"### 🏬 {store_name} – {city}")
+    st.markdown(f"### 🏬 {partner_name} – {state}")
 
     image_columns = [
         ("Store image - Front (With Date and Time)", "Store Front"),
         ("Reporting form (With Date and Time)", "Reporting Form"),
-        ("Before work photo (With Date and Time)", "Before Installation"),
         ("After work photo (With Date and Time)", "After Installation"),
     ]
 
