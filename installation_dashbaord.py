@@ -20,6 +20,18 @@ except FileNotFoundError:
     st.stop()
 
 # ----------------------------
+# 📍 Header Section with Logo
+# ----------------------------
+from PIL import Image
+
+# Load and show AS Maven logo
+logo = Image.open("maven-logo.jpeg")
+st.image(logo, width=120)  # You can adjust width (e.g., 120–200)
+
+st.markdown("---")
+
+
+# ----------------------------
 # Clean column names
 # ----------------------------
 def clean_column(col_name):
@@ -141,17 +153,59 @@ st.header("📊 Store Data Details")
 store_table = filtered_df[['MavenCode', 'Partner Store Name', 'Store code', 'State', 'City', 'Have you completed the installation at the store?']]
 st.dataframe(store_table, use_container_width=True)
 
-# ----------------------------
-# ❌ Not Deployed Store Details
-# ----------------------------
-st.header("📊 Not Deployed Store Details")
-not_deployed_df = filtered_df[filtered_df['Have you completed the installation at the store?'].astype(str).str.upper() == 'NO']
-if 'Reason' in not_deployed_df.columns:
-    not_deployed_table = not_deployed_df[['MavenCode', 'State', 'City', 'Reason']]
+
+
+# Load Excel data
+df = pd.read_excel("Maven-data-installation.xlsx")
+df.columns = df.columns.str.strip()  # Clean spaces
+
+# Detect the correct installation status column automatically
+status_col = None
+for col in df.columns:
+    if "installation" in col.lower() and "store" in col.lower():
+        status_col = col
+        break
+
+if not status_col:
+    st.error("❌ Could not find 'Installation Status' column in Excel.")
 else:
-    not_deployed_table = not_deployed_df[['MavenCode', 'State', 'City']]
-st.dataframe(not_deployed_table, use_container_width=True)
-st.markdown("---")
+    # Filter Not Deployed Stores
+    not_deployed = df[df[status_col].str.lower() != "yes"]
+
+    # Columns to include
+    required_columns = [
+        "MavenCode",
+        "Store code",
+        "Partner Store Name",
+        "State",
+        "City",
+        "If installation not done, Reason ?"
+    ]
+
+    # Pick only existing columns
+    existing_columns = [col for col in required_columns if col in not_deployed.columns]
+
+    # Rename for dashboard clarity
+    column_mapping = {
+        "If installation not done, Reason ?": "Reason",
+        "Store code": "Store Code",
+        "Partner Store Name": "Partner Store Name"
+    }
+
+    not_deployed = not_deployed[existing_columns].rename(columns=column_mapping)
+
+    # Display section
+    st.markdown("## 📊 Not Deployed Store Details")
+
+    st.dataframe(
+        not_deployed[
+            ["MavenCode", "Store Code", "Partner Store Name", "State", "City", "Reason"]
+        ],
+        use_container_width=True,
+        hide_index=True
+    )
+
+
 
 # ----------------------------
 # Helper: Convert Google Drive URLs properly
