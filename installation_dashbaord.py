@@ -4,6 +4,8 @@ import plotly.express as px
 import requests
 import re
 import base64
+from PIL import Image
+import os
 
 # ----------------------------
 # Page config
@@ -11,75 +13,77 @@ import base64
 st.set_page_config(page_title="AS Maven Installation Dashboard", layout="wide")
 
 # ----------------------------
-# Load Excel
+# Cached Data Load
 # ----------------------------
-try:
+@st.cache_data(show_spinner=False)
+def load_data():
     df = pd.read_excel("Maven-data-installation.xlsx")
+    df.columns = [str(c).replace('\n', ' ').replace('\r', '').replace('\xa0', ' ').strip() for c in df.columns]
+    return df
+
+try:
+    df = load_data()
 except FileNotFoundError:
-    st.error("❌ Excel file not found! Please make sure it's named 'data-trial.xlsx' and is in the same folder.")
+    st.error("❌ Excel file not found! Please make sure 'Maven-data-installation.xlsx' is in the same folder.")
     st.stop()
 
 # ----------------------------
-# 📍 Header Section with Logo
+# ✨ Header Section (Balanced, Professional Look)
 # ----------------------------
-from PIL import Image
+col_logo, col_title = st.columns([0.15, 0.85])
+with col_logo:
+    try:
+        logo = Image.open("maven-logo.jpeg")
+        st.image(logo, width=90)
+    except:
+        st.write("🧩 AS Maven")
+with col_title:
+    st.markdown(
+        """
+        <h2 style='margin-bottom:0;color:#f5f5f5;'>AS Maven Store Installation Dashboard</h2>
+        <p style='margin-top:4px;font-size:18px;color:#aaa;'>Project Infiniti</p>
+        """,
+        unsafe_allow_html=True,
+    )
 
-# Load and show AS Maven logo
-logo = Image.open("maven-logo.jpeg")
-st.image(logo, width=120)  # You can adjust width (e.g., 120–200)
-
-st.markdown("---")
-
+st.markdown("<hr style='margin-top:5px;margin-bottom:20px;border:1px solid #444;'/>", unsafe_allow_html=True)
 
 # ----------------------------
-# Clean column names
-# ----------------------------
-def clean_column(col_name):
-    return str(col_name).replace('\n', ' ').replace('\r', '').replace('\xa0', ' ').strip()
-
-df.columns = [clean_column(col) for col in df.columns]
-
-# ----------------------------
-# Required columns
+# Validate Columns
 # ----------------------------
 required_columns = [
-    'Timestamp', 'MavenCode', 'Partner Store Name', 'Store code',
-    'State', 'City', 'Have you completed the installation at the store?',
+    'Timestamp', 'MavenCode', 'Partner Store Name', 'Store code', 'State', 'City',
+    'Have you completed the installation at the store?',
     'Store image - Front (With Date and Time)',
     'After work photo (With Date and Time)',
     'Reporting form (With Date and Time)'
 ]
-
-missing_columns = [col for col in required_columns if col not in df.columns]
-if missing_columns:
+missing = [c for c in required_columns if c not in df.columns]
+if missing:
     st.error("⚠️ Missing required columns in Excel file:")
-    for col in missing_columns:
-        st.write(f"- {col}")
+    for c in missing:
+        st.write(f"- {c}")
     st.stop()
-
-# ----------------------------
-# Title and Summary
-# ----------------------------
-st.title("AS Maven Store Installation Dashboard - Project Infiniti")
-st.markdown("Interactive dashboard showing installation status, site details, and progress with photos.")
-st.markdown("---")
 
 # ----------------------------
 # KPIs
 # ----------------------------
+st.markdown("### 📈 Installation Summary")
+
 total_stores = len(df)
-completed_count = df['Have you completed the installation at the store?'].astype(str).str.upper().value_counts().get('YES', 0)
-not_completed_count = df['Have you completed the installation at the store?'].astype(str).str.upper().value_counts().get('NO', 0)
+completed = df['Have you completed the installation at the store?'].astype(str).str.upper().value_counts().get('YES', 0)
+not_completed = df['Have you completed the installation at the store?'].astype(str).str.upper().value_counts().get('NO', 0)
+pending = total_stores - (completed + not_completed)
+rate = (completed / total_stores) * 100 if total_stores > 0 else 0
 
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Stores", 842)
-col2.metric("Stores Completed", completed_count)
-col3.metric("Not Deployed", not_completed_count)
-col4.metric("Pending", 842 - (completed_count + not_completed_count))
+col1.metric("Total Stores", total_stores)
+col2.metric("Stores Completed", completed)
+col3.metric("Not Deployed", not_completed)
+col4.metric("Pending", pending)
 
-completion_rate = (completed_count / total_stores) * 100 if total_stores > 0 else 0
-st.progress(int(completion_rate))
-st.caption(f"✅ Installation Progress: {completion_rate:.1f}% completed")
+st.progress(int(rate))
+st.caption(f"✅ Installation Progress: {rate:.1f}% completed")
 st.markdown("---")
 
 # ----------------------------
@@ -99,7 +103,7 @@ if partners:
     filtered_df = filtered_df[filtered_df['Partner Store Name'].isin(partners)]
 
 # ----------------------------
-# Inline Bar Graph – Installation Status by State
+# Installation Status by State
 # ----------------------------
 filtered_df['Installation Status'] = (
     filtered_df['Have you completed the installation at the store?']
@@ -107,8 +111,8 @@ filtered_df['Installation Status'] = (
     .str.strip()
     .str.lower()
     .map({'yes': 'Yes', 'no': 'No'})
+    .fillna('Unknown')
 )
-filtered_df['Installation Status'] = filtered_df['Installation Status'].fillna('Unknown')
 
 grouped_state = (
     filtered_df.groupby(['State', 'Installation Status'])
@@ -119,19 +123,13 @@ grouped_state = grouped_state[grouped_state['State'].notna() & (grouped_state['S
 
 inline_bar = px.bar(
     grouped_state,
-    x='State',
-    y='Count',
-    color='Installation Status',
-    barmode='group',
-    text_auto=True,
+    x='State', y='Count', color='Installation Status',
+    barmode='group', text_auto=True,
     title="Installation Status by State"
 )
 inline_bar.update_layout(
-    xaxis_title="State",
-    yaxis_title="Number of Stores",
-    template="plotly_dark",
-    plot_bgcolor="rgba(0,0,0,0)",
-    paper_bgcolor="rgba(0,0,0,0)"
+    xaxis_title="State", yaxis_title="Number of Stores",
+    template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
 )
 st.plotly_chart(inline_bar, use_container_width=True)
 
@@ -139,76 +137,41 @@ st.plotly_chart(inline_bar, use_container_width=True)
 # Installation Status Pie Chart
 # ----------------------------
 status_fig = px.pie(
-    filtered_df,
-    names='Have you completed the installation at the store?',
-    title="Installation Status Distribution",
-    hole=0.4
+    filtered_df, names='Have you completed the installation at the store?',
+    title="Installation Status Distribution", hole=0.4
 )
 st.plotly_chart(status_fig, use_container_width=True)
 
 # ----------------------------
-# 📋 Store Data Table Section
+# Store Data Table
 # ----------------------------
 st.header("📊 Store Data Details")
-store_table = filtered_df[['MavenCode', 'Partner Store Name', 'Store code', 'State', 'City', 'Have you completed the installation at the store?']]
-st.dataframe(store_table, use_container_width=True)
+st.dataframe(
+    filtered_df[['MavenCode', 'Partner Store Name', 'Store code', 'State', 'City', 'Have you completed the installation at the store?']],
+    use_container_width=True
+)
 
-
-
-# Load Excel data
-df = pd.read_excel("Maven-data-installation.xlsx")
-df.columns = df.columns.str.strip()  # Clean spaces
-
-# Detect the correct installation status column automatically
+# ----------------------------
+# Not Deployed Stores
+# ----------------------------
 status_col = None
 for col in df.columns:
     if "installation" in col.lower() and "store" in col.lower():
         status_col = col
         break
 
-if not status_col:
-    st.error("❌ Could not find 'Installation Status' column in Excel.")
-else:
-    # Filter Not Deployed Stores
+if status_col:
     not_deployed = df[df[status_col].str.lower() != "yes"]
-
-    # Columns to include
-    required_columns = [
-        "MavenCode",
-        "Store code",
-        "Partner Store Name",
-        "State",
-        "City",
-        "If installation not done, Reason ?"
+    required_cols = [
+        "MavenCode", "Store code", "Partner Store Name", "State", "City", "If installation not done, Reason ?"
     ]
-
-    # Pick only existing columns
-    existing_columns = [col for col in required_columns if col in not_deployed.columns]
-
-    # Rename for dashboard clarity
-    column_mapping = {
-        "If installation not done, Reason ?": "Reason",
-        "Store code": "Store Code",
-        "Partner Store Name": "Partner Store Name"
-    }
-
-    not_deployed = not_deployed[existing_columns].rename(columns=column_mapping)
-
-    # Display section
-    st.markdown("## 📊 Not Deployed Store Details")
-
-    st.dataframe(
-        not_deployed[
-            ["MavenCode", "Store Code", "Partner Store Name", "State", "City", "Reason"]
-        ],
-        use_container_width=True,
-        hide_index=True
-    )
-
-
+    existing = [c for c in required_cols if c in not_deployed.columns]
+    rename = {"If installation not done, Reason ?": "Reason", "Store code": "Store Code"}
+    st.markdown("## 📍 Not Deployed Store Details")
+    st.dataframe(not_deployed[existing].rename(columns=rename), use_container_width=True)
 
 # ----------------------------
-# Helper: Convert Google Drive URLs properly
+# Helper: Google Drive URL Converter + Cached Image Fetch
 # ----------------------------
 def convert_drive_url(url):
     if pd.isna(url) or not str(url).strip():
@@ -224,32 +187,39 @@ def convert_drive_url(url):
 @st.cache_data(show_spinner=False)
 def fetch_image_base64(url):
     try:
-        response = requests.get(url, timeout=6)
+        response = requests.get(url, timeout=4)
         if response.status_code == 200:
             encoded = base64.b64encode(response.content).decode()
-            mime_type = response.headers.get("Content-Type", "image/jpeg")
-            return f"data:{mime_type};base64,{encoded}"
+            mime = response.headers.get("Content-Type", "image/jpeg")
+            return f"data:{mime};base64,{encoded}"
     except Exception:
-        return None
+        pass
     return None
 
 # ----------------------------
-# 📸 Store Images Section (With Partner Store Name)
+# 📸 Store Images (Dynamic Limit)
 # ----------------------------
 st.header("📸 Store Images")
 
-for _, row in filtered_df.iterrows():
-    partner_name = str(row.get("Partner Store Name", "Unknown Partner")).strip() or "Unknown Partner"
-    state = str(row.get("State", "Unknown State")).strip() or "Unknown State"
+if len(filtered_df) > 20:
+    view_option = st.radio("Select view limit:", ["Preview 20", "Show All"], horizontal=True)
+    max_images = 20 if view_option == "Preview 20" else len(filtered_df)
+else:
+    max_images = len(filtered_df)
 
-    st.markdown(f"### 🏬 {partner_name} – {state}")
+for i, (_, row) in enumerate(filtered_df.iterrows()):
+    if i >= max_images:
+        break
+
+    partner = str(row.get("Partner Store Name", "Unknown Partner"))
+    state = str(row.get("State", "Unknown State"))
+    st.markdown(f"### 🏬 {partner} – {state}")
 
     image_columns = [
         ("Store image - Front (With Date and Time)", "Store Front"),
         ("Reporting form (With Date and Time)", "Reporting Form"),
         ("After work photo (With Date and Time)", "After Installation"),
     ]
-
     cols = st.columns(len(image_columns))
 
     for col, (col_name, label) in zip(cols, image_columns):
@@ -266,11 +236,10 @@ for _, row in filtered_df.iterrows():
                             </a>
                             <p style="font-size:13px;color:#ccc;">{label}</p>
                         </div>
-                        """,
-                        unsafe_allow_html=True
+                        """, unsafe_allow_html=True
                     )
                 else:
-                    st.info(f"⚠️ {label}: Image not accessible or invalid link.")
+                    st.info(f"⚠️ {label}: Image not accessible.")
             else:
-                st.info(f"❌ {label}: Image link missing or invalid.")
+                st.info(f"❌ {label}: Image link missing.")
     st.markdown("---")
