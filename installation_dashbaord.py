@@ -77,10 +77,10 @@ pending = total_stores - (completed + not_completed)
 rate = (completed / total_stores) * 100 if total_stores > 0 else 0
 
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Stores", total_stores)
+col1.metric("Total Stores", 842)
 col2.metric("Stores Completed", completed)
 col3.metric("Not Deployed", not_completed)
-col4.metric("Pending", pending)
+col4.metric("Pending", 842 - (completed + not_completed))
 
 st.progress(int(rate))
 st.caption(f"✅ Installation Progress: {rate:.1f}% completed")
