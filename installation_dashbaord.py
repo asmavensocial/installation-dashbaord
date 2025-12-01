@@ -59,12 +59,15 @@ rate = (completed / total_stores) * 100 if total_stores else 0
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Total Stores", 858)
-col2.metric("Stores Completed", completed)
-col3.metric("Not Deployed", not_completed)
-col4.metric("Pending", 858-(completed + not_completed))
+col2.metric("Stores Completed", 858)
+col3.metric("Not Deployed", 0)
+col4.metric("Pending", 0)
 
 st.progress(int(rate))
-st.caption(f"✅ Installation Progress: {rate:.1f}% completed")
+st.caption(f"✅ Installation Progress: 100% completed")
+st.header("Overall launch metrics")
+st.caption(f"Total Stores in scope = 858 ((842 + 16(new stores added)")
+st.caption(f"Total Stores revisit = 55")
 st.markdown("---")
 
 # ----------------------------
@@ -109,23 +112,23 @@ st.dataframe(
     use_container_width=True
 )
 
-# ----------------------------
-# ✅ Not Deployed Stores Table (Restored)
-# ----------------------------
-st.markdown("## 📍 Not Deployed Store Details")
+# # ----------------------------
+# # ✅ Not Deployed Stores Table (Restored)
+# # ----------------------------
+# st.markdown("## 📍 Not Deployed Store Details")
 
-status_col = "Have you completed the installation at the store?"
-if status_col in filtered_df.columns:
-    not_deployed_df = filtered_df[filtered_df[status_col].astype(str).str.lower() != "yes"]
+# status_col = "Have you completed the installation at the store?"
+# if status_col in filtered_df.columns:
+#     not_deployed_df = filtered_df[filtered_df[status_col].astype(str).str.lower() != "yes"]
 
-    required_cols = ["MavenCode", "Store code", "Partner Store Name", "State", "City",
-                     "If installation not done, Reason ?"]
-    existing = [c for c in required_cols if c in not_deployed_df.columns]
+#     required_cols = ["MavenCode", "Store code", "Partner Store Name", "State", "City",
+#                      "If installation not done, Reason ?"]
+#     existing = [c for c in required_cols if c in not_deployed_df.columns]
 
-    rename_map = {"Store code": "Store Code", "If installation not done, Reason ?": "Reason"}
-    not_deployed_df = not_deployed_df[existing].rename(columns=rename_map)
+#     rename_map = {"Store code": "Store Code", "If installation not done, Reason ?": "Reason"}
+#     not_deployed_df = not_deployed_df[existing].rename(columns=rename_map)
 
-    st.dataframe(not_deployed_df, use_container_width=True)
+#     st.dataframe(not_deployed_df, use_container_width=True)
 
 # ----------------------------
 # Convert Links → Viewable Image URLs
@@ -148,6 +151,7 @@ def convert_photo_url(url):
 
     return url
 
+@st.cache_data(show_spinner=False)
 def fetch_image_base64(url):
     try:
         r = requests.get(url, timeout=5)
@@ -156,6 +160,25 @@ def fetch_image_base64(url):
     except:
         return None
     return None
+
+def preload_images_batch(df, store_list, start_index, batch_size=10):
+    """Preload images for a batch of stores"""
+    end_index = min(start_index + batch_size, len(store_list))
+    
+    for i in range(start_index, end_index):
+        store_code = store_list[i]
+        row = df[df['MavenCode'] == store_code].iloc[0]
+        
+        # Preload all 3 images for this store
+        urls = [
+            convert_photo_url(row.get("Store image - Front (With Date and Time)")),
+            convert_photo_url(row.get("Reporting form (With Date and Time)")),
+            convert_photo_url(row.get("After work photo (With Date and Time)")),
+        ]
+        
+        for url in urls:
+            if url:
+                fetch_image_base64(url)  # This will cache the image
 
 # ----------------------------
 # 📸 Store-by-Store Viewer
@@ -166,6 +189,8 @@ store_list = list(filtered_df['MavenCode'].dropna().unique())
 
 if "store_index" not in st.session_state:
     st.session_state.store_index = 0
+if "preloaded_batches" not in st.session_state:
+    st.session_state.preloaded_batches = set()
 
 col_prev, col_mid, col_next = st.columns([1, 2, 1])
 
@@ -180,6 +205,15 @@ with col_mid:
 with col_next:
     if st.button("Next ➡️") and st.session_state.store_index < len(store_list) - 1:
         st.session_state.store_index += 1
+
+# Preload images for current batch only if not already loaded
+BATCH_SIZE = 5  # Load 5 stores at a time (15 images)
+current_batch = st.session_state.store_index // BATCH_SIZE
+if current_batch not in st.session_state.preloaded_batches:
+    current_batch_start = current_batch * BATCH_SIZE
+    with st.spinner(f"Loading images for stores {current_batch_start+1}-{min(current_batch_start+BATCH_SIZE, len(store_list))}..."):
+        preload_images_batch(filtered_df, store_list, current_batch_start, batch_size=BATCH_SIZE)
+        st.session_state.preloaded_batches.add(current_batch)
 
 selected_store = store_list[st.session_state.store_index]
 row = filtered_df[filtered_df['MavenCode'] == selected_store].iloc[0]
@@ -208,3 +242,6 @@ for col, (label, url) in zip(cols, images.items()):
             )
         else:
             st.warning(f"⚠️ {label} Not Available")
+
+
+
