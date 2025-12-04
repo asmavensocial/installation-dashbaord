@@ -58,15 +58,15 @@ pending = total_stores - (completed + not_completed)
 rate = (completed / total_stores) * 100 if total_stores else 0
 
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Stores", 858)
-col2.metric("Stores Completed", 858)
+col1.metric("Total Stores", 861)
+col2.metric("Stores Completed", 861)
 col3.metric("Not Deployed", 0)
 col4.metric("Pending", 0)
 
 st.progress(int(rate))
 st.caption(f"✅ Installation Progress: 100% completed")
 st.header("Overall launch metrics")
-st.caption(f"Total Stores in scope = 858 ((842 + 19(new stores added)")
+st.caption(f"Total Stores in scope = 861 ((842 + 19(new stores added)")
 st.caption(f"Total Stores revisit = 32")
 st.markdown("---")
 
