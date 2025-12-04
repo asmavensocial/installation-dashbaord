@@ -67,7 +67,7 @@ st.progress(int(rate))
 st.caption(f"✅ Installation Progress: 100% completed")
 st.header("Overall launch metrics")
 st.caption(f"Total Stores in scope = 858 ((842 + 16(new stores added)")
-st.caption(f"Total Stores revisit = TBU")
+st.caption(f"Total Stores revisit = 32")
 st.markdown("---")
 
 # ----------------------------
