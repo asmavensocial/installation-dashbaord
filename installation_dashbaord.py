@@ -6,242 +6,273 @@ import re
 import base64
 import requests
 
-# ----------------------------
-# Page config
-# ----------------------------
-st.set_page_config(page_title="AS Maven Installation Dashboard", layout="wide")
+# ======================================================
+# PAGE CONFIG
+# ======================================================
+st.set_page_config(
+    page_title="AS Maven Installation Dashboard",
+    layout="wide"
+)
 
-# ----------------------------
-# Cached Data Load
-# ----------------------------
+# ======================================================
+# COLUMN NORMALIZATION (CRITICAL FIX)
+# ======================================================
+def normalize_columns(df):
+    column_map = {
+        "Maven Code": "MavenCode",
+        "Partner Name": "Partner Store Name",
+        "Store code - Oneplus": "Store Code",
+        "Installation Completed ?": "Installation Status",
+        "If installation not done, please mention the reason ?": "Reason",
+        "Store front image(With Date & Time)": "Store Front Image",
+        "Before image(With Date & Time)": "Before Image",
+        "After image(With Date & Time)": "After Image",
+        "Reporting form image(With Date & Time)": "Reporting Form Image",
+    }
+
+    for excel_col, std_col in column_map.items():
+        if excel_col in df.columns:
+            df[std_col] = df[excel_col]
+
+    return df
+
+# ======================================================
+# LOAD DATA
+# ======================================================
 @st.cache_data(show_spinner=False)
 def load_data():
-    df = pd.read_excel("Maven-data-installation.xlsx")
-    df.columns = [str(c).replace('\n', ' ').replace('\r', '').replace('\xa0', ' ').strip() for c in df.columns]
+    df = pd.read_excel("Macan-KVInstallation.xlsx")
+    df.columns = [str(c).strip() for c in df.columns]
+    df = normalize_columns(df)
     return df
 
 try:
     df = load_data()
 except FileNotFoundError:
-    st.error("❌ Excel file not found! Make sure 'Maven-data-installation.xlsx' is in this folder.")
+    st.error("❌ Excel file not found. Please upload 'Maven-data-installation.xlsx'")
     st.stop()
 
-# ----------------------------
-# Header
-# ----------------------------
-col_logo, col_title = st.columns([0.15, 0.85])
+# ======================================================
+# HEADER
+# ======================================================
+col_logo, col_title = st.columns([0.12, 0.88])
+
 with col_logo:
     try:
-        logo = Image.open("maven-logo.jpeg")
-        st.image(logo, width=90)
+        st.image("maven-logo.jpeg", width=90)
     except:
         st.write("AS Maven")
 
 with col_title:
     st.markdown(
         """
-        <h2 style='margin-bottom:0;color:#f5f5f5;'>AS Maven Store Installation Dashboard</h2>
-        <p style='margin-top:4px;font-size:18px;color:#aaa;'>Project Infiniti</p>
+        <h2 style='margin-bottom:0;'>AS Maven Store Installation Dashboard</h2>
+        <p style='margin-top:4px;font-size:18px;color:#888;'>Project Macan – KV Installation</p>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
-st.markdown("<hr style='margin-top:5px;margin-bottom:20px;border:1px solid #444;'/>", unsafe_allow_html=True)
-
-# ----------------------------
-# KPI Summary
-# ----------------------------
-total_stores = len(df)
-completed = df['Have you completed the installation at the store?'].astype(str).str.upper().value_counts().get('YES', 0)
-not_completed = df['Have you completed the installation at the store?'].astype(str).str.upper().value_counts().get('NO', 0)
-pending = total_stores - (completed + not_completed)
-rate = (completed / total_stores) * 100 if total_stores else 0
-
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Stores", 861)
-col2.metric("Stores Completed", 861)
-col3.metric("Not Deployed", 0)
-col4.metric("Pending", 0)
-
-st.progress(int(rate))
-st.caption(f"✅ Installation Progress: 100% completed")
-st.header("Overall launch metrics")
-st.caption(f"Total Stores in scope = 861 ((842 + 19(new stores added)")
-st.caption(f"Total Stores revisit = 32")
 st.markdown("---")
 
-# ----------------------------
-# Sidebar Filters
-# ----------------------------
+# ======================================================
+# INSTALLATION STATUS STANDARDIZATION
+# ======================================================
+df["Installation Status"] = (
+    df["Installation Status"]
+    .astype(str)
+    .str.upper()
+    .map({
+        "YES": "Completed",
+        "Y": "Completed",
+        "DONE": "Completed",
+        "COMPLETED": "Completed",
+        "NO": "Not Completed",
+        "N": "Not Completed",
+    })
+    .fillna("Pending")
+)
+
+# ======================================================
+# KPI METRICS
+# ======================================================
+total_stores = len(df)
+completed = (df["Installation Status"] == "Completed").sum()
+not_completed = (df["Installation Status"] == "Not Completed").sum()
+pending = total_stores - (completed + not_completed)
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Total Stores", total_stores)
+c2.metric("Completed", completed)
+c3.metric("Not Deployed", not_completed)
+c4.metric("Pending", pending)
+
+st.markdown("---")
+
+# ======================================================
+# SIDEBAR FILTERS (SAFE)
+# ======================================================
 st.sidebar.header("🔍 Filters")
-states = st.sidebar.multiselect("Select State(s)", df['State'].dropna().unique())
-cities = st.sidebar.multiselect("Select City(s)", df['City'].dropna().unique())
-partners = st.sidebar.multiselect("Select Partner(s)", df['Partner Store Name'].dropna().unique())
+
+states = st.sidebar.multiselect(
+    "State", df["State"].dropna().unique() if "State" in df.columns else []
+)
+cities = st.sidebar.multiselect(
+    "City", df["City"].dropna().unique() if "City" in df.columns else []
+)
+partners = st.sidebar.multiselect(
+    "Partner Store Name",
+    df["Partner Store Name"].dropna().unique() if "Partner Store Name" in df.columns else []
+)
 
 filtered_df = df.copy()
 if states:
-    filtered_df = filtered_df[filtered_df['State'].isin(states)]
+    filtered_df = filtered_df[filtered_df["State"].isin(states)]
 if cities:
-    filtered_df = filtered_df[filtered_df['City'].isin(cities)]
+    filtered_df = filtered_df[filtered_df["City"].isin(cities)]
 if partners:
-    filtered_df = filtered_df[filtered_df['Partner Store Name'].isin(partners)]
+    filtered_df = filtered_df[filtered_df["Partner Store Name"].isin(partners)]
 
-# ----------------------------
-# Charts
-# ----------------------------
-filtered_df['Installation Status'] = (
-    filtered_df['Have you completed the installation at the store?']
-    .astype(str).str.lower().map({'yes': 'Yes', 'no': 'No'}).fillna('Unknown')
+# ======================================================
+# BAR CHART – STATUS BY STATE
+# ======================================================
+grouped = (
+    filtered_df
+    .groupby(["State", "Installation Status"])
+    .size()
+    .reset_index(name="Count")
 )
 
-grouped_state = filtered_df.groupby(['State', 'Installation Status']).size().reset_index(name='Count')
-grouped_state = grouped_state[grouped_state['State'].notna()]
+fig = px.bar(
+    grouped,
+    x="State",
+    y="Count",
+    color="Installation Status",
+    barmode="group",
+    text_auto=True,
+    title="Installation Status by State"
+)
+fig.update_layout(template="plotly_dark")
 
-chart = px.bar(grouped_state, x='State', y='Count', color='Installation Status', barmode='group', text_auto=True,
-               title="Installation Status by State")
-chart.update_layout(template="plotly_dark")
-st.plotly_chart(chart, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
 
-# ----------------------------
-# Data Table
-# ----------------------------
+# ======================================================
+# STORE DATA TABLE
+# ======================================================
 st.header("📊 Store Data Details")
+
 st.dataframe(
-    filtered_df[['MavenCode', 'Partner Store Name', 'Store code', 'State', 'City',
-                 'Have you completed the installation at the store?']],
-    use_container_width=True
+    filtered_df[
+        [
+            "MavenCode",
+            "Partner Store Name",
+            "Store Code",
+            "State",
+            "City",
+            "Installation Status",
+        ]
+    ],
+    use_container_width=True,
 )
 
-# # ----------------------------
-# # ✅ Not Deployed Stores Table (Restored)
-# # ----------------------------
-# st.markdown("## 📍 Not Deployed Store Details")
+# ======================================================
+# NOT DEPLOYED TABLE WITH REASON
+# ======================================================
+st.header("📍 Not Deployed Stores")
 
-# status_col = "Have you completed the installation at the store?"
-# if status_col in filtered_df.columns:
-#     not_deployed_df = filtered_df[filtered_df[status_col].astype(str).str.lower() != "yes"]
+not_deployed_df = filtered_df[filtered_df["Installation Status"] == "Not Completed"]
 
-#     required_cols = ["MavenCode", "Store code", "Partner Store Name", "State", "City",
-#                      "If installation not done, Reason ?"]
-#     existing = [c for c in required_cols if c in not_deployed_df.columns]
+if not not_deployed_df.empty:
+    st.dataframe(
+        not_deployed_df[
+            [
+                "MavenCode",
+                "Store Code",
+                "Partner Store Name",
+                "State",
+                "City",
+                "Reason",
+            ]
+        ],
+        use_container_width=True,
+    )
+else:
+    st.info("All stores are completed 🎉")
 
-#     rename_map = {"Store code": "Store Code", "If installation not done, Reason ?": "Reason"}
-#     not_deployed_df = not_deployed_df[existing].rename(columns=rename_map)
+# # ======================================================
+# # IMAGE HELPERS
+# # ======================================================
+# def convert_photo_url(url):
+#     if pd.isna(url) or not str(url).strip():
+#         return None
 
-#     st.dataframe(not_deployed_df, use_container_width=True)
+#     url = str(url).strip()
 
-# ----------------------------
-# Convert Links → Viewable Image URLs
-# ----------------------------
-def convert_photo_url(url):
-    if pd.isna(url) or not str(url).strip():
-        return None
-    url = str(url).strip()
+#     match = re.search(r"[-\w]{25,}", url)
+#     if match:
+#         return f"https://drive.google.com/uc?export=view&id={match.group(0)}"
 
-    if "googleusercontent" in url:
-        return url + "=w1200-h800"
+#     return url
 
-    match = re.search(r"AF1Qip[A-Za-z0-9\-_]+", url)
-    if match:
-        return f"https://lh3.googleusercontent.com/{match.group(0)}=w1200-h800"
+# @st.cache_data(show_spinner=False)
+# def fetch_image(url):
+#     try:
+#         r = requests.get(url, timeout=6)
+#         if r.status_code == 200:
+#             return "data:image/jpeg;base64," + base64.b64encode(r.content).decode()
+#     except:
+#         pass
+#     return None
 
-    match2 = re.search(r"[-\w]{25,}", url)
-    if match2:
-        return f"https://drive.google.com/uc?export=view&id={match2.group(0)}"
+# # ======================================================
+# # STORE IMAGE VIEWER
+# # ======================================================
+# st.header("📸 Store Images Viewer")
 
-    return url
+# store_list = filtered_df["MavenCode"].dropna().unique().tolist()
 
-@st.cache_data(show_spinner=False)
-def fetch_image_base64(url):
-    try:
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            return "data:image/jpeg;base64," + base64.b64encode(r.content).decode()
-    except:
-        return None
-    return None
+# if "store_index" not in st.session_state:
+#     st.session_state.store_index = 0
 
-def preload_images_batch(df, store_list, start_index, batch_size=10):
-    """Preload images for a batch of stores"""
-    end_index = min(start_index + batch_size, len(store_list))
-    
-    for i in range(start_index, end_index):
-        store_code = store_list[i]
-        row = df[df['MavenCode'] == store_code].iloc[0]
-        
-        # Preload all 3 images for this store
-        urls = [
-            convert_photo_url(row.get("Store image - Front (With Date and Time)")),
-            convert_photo_url(row.get("Reporting form (With Date and Time)")),
-            convert_photo_url(row.get("After work photo (With Date and Time)")),
-        ]
-        
-        for url in urls:
-            if url:
-                fetch_image_base64(url)  # This will cache the image
+# c_prev, c_mid, c_next = st.columns([1, 2, 1])
 
-# ----------------------------
-# 📸 Store-by-Store Viewer
-# ----------------------------
-st.header("📸 Store Images Viewer")
+# with c_prev:
+#     if st.button("⬅ Previous") and st.session_state.store_index > 0:
+#         st.session_state.store_index -= 1
 
-store_list = list(filtered_df['MavenCode'].dropna().unique())
+# with c_mid:
+#     st.markdown(
+#         f"<h4 style='text-align:center;'>Store {st.session_state.store_index+1} of {len(store_list)}</h4>",
+#         unsafe_allow_html=True
+#     )
 
-if "store_index" not in st.session_state:
-    st.session_state.store_index = 0
-if "preloaded_batches" not in st.session_state:
-    st.session_state.preloaded_batches = set()
+# with c_next:
+#     if st.button("Next ➡") and st.session_state.store_index < len(store_list) - 1:
+#         st.session_state.store_index += 1
 
-col_prev, col_mid, col_next = st.columns([1, 2, 1])
+# row = filtered_df[filtered_df["MavenCode"] == store_list[st.session_state.store_index]].iloc[0]
 
-with col_prev:
-    if st.button("⬅️ Previous") and st.session_state.store_index > 0:
-        st.session_state.store_index -= 1
+# st.markdown(
+#     f"### 🏬 **{row['Partner Store Name']}** — *{row['City']}, {row['State']}* ({row['MavenCode']})"
+# )
 
-with col_mid:
-    st.markdown(f"<h4 style='text-align:center;'>Store {st.session_state.store_index+1} of {len(store_list)}</h4>", 
-                unsafe_allow_html=True)
+# images = {
+#     "Store Front": row.get("Store Front Image"),
+#     "Before Installation": row.get("Before Image"),
+#     "After Installation": row.get("After Image"),
+#     "Reporting Form": row.get("Reporting Form Image"),
+# }
 
-with col_next:
-    if st.button("Next ➡️") and st.session_state.store_index < len(store_list) - 1:
-        st.session_state.store_index += 1
-
-# Preload images for current batch only if not already loaded
-BATCH_SIZE = 5  # Load 5 stores at a time (15 images)
-current_batch = st.session_state.store_index // BATCH_SIZE
-if current_batch not in st.session_state.preloaded_batches:
-    current_batch_start = current_batch * BATCH_SIZE
-    with st.spinner(f"Loading images for stores {current_batch_start+1}-{min(current_batch_start+BATCH_SIZE, len(store_list))}..."):
-        preload_images_batch(filtered_df, store_list, current_batch_start, batch_size=BATCH_SIZE)
-        st.session_state.preloaded_batches.add(current_batch)
-
-selected_store = store_list[st.session_state.store_index]
-row = filtered_df[filtered_df['MavenCode'] == selected_store].iloc[0]
-
-st.markdown(f"### 🏬 **{row['Partner Store Name']}** — *{row['City']}, {row['State']}* ({row['MavenCode']})")
-
-images = {
-    "Store Front Image": convert_photo_url(row.get("Store image - Front (With Date and Time)")),
-    "Reporting Form Image": convert_photo_url(row.get("Reporting form (With Date and Time)")),
-    "After Installation Image": convert_photo_url(row.get("After work photo (With Date and Time)")),
-}
-
-cols = st.columns(3)
-for col, (label, url) in zip(cols, images.items()):
-    with col:
-        img_data = fetch_image_base64(url)
-        if img_data:
-            st.markdown(
-                f"""
-                <div style="text-align:center;">
-                    <img src="{img_data}" style="width:100%;height:260px;object-fit:cover;border-radius:10px;border:1px solid #444;"/>
-                    <p style="font-size:14px;color:#ccc;">{label}</p>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-        else:
-            st.warning(f"⚠️ {label} Not Available")
-
-
-
+# cols = st.columns(4)
+# for col, (label, url) in zip(cols, images.items()):
+#     with col:
+#         img = fetch_image(convert_photo_url(url))
+#         if img:
+#             st.markdown(
+#                 f"""
+#                 <img src="{img}" style="width:100%;height:220px;object-fit:cover;border-radius:8px;border:1px solid #444;">
+#                 <p style="text-align:center;color:#aaa;">{label}</p>
+#                 """,
+#                 unsafe_allow_html=True
+#             )
+#         else:
+#             st.warning(f"{label} not available")
