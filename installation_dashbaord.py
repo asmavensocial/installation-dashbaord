@@ -41,7 +41,7 @@ def normalize_columns(df):
 # ======================================================
 @st.cache_data(show_spinner=False)
 def load_data():
-    df = pd.read_excel("Macan-KVInstallation.xlsx")
+    df = pd.read_excel("Macan_installation_kV-sheet.xlsx")
     df.columns = [str(c).strip() for c in df.columns]
     df = normalize_columns(df)
     return df
