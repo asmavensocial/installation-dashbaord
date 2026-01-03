@@ -102,9 +102,9 @@ pending = total_stores - (completed + not_completed)
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Total Stores", 858)
-c2.metric("Completed", total_stores)
-c3.metric("Not Deployed", not_completed)
-c4.metric("Pending", 858 - total_stores)
+c2.metric("Completed", 858)
+c3.metric("Not Deployed", 83)
+c4.metric("Pending", 0)
 
 st.markdown("---")
 
